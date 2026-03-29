@@ -4,7 +4,51 @@ import {
   Settings2, Database, CheckCircle2, AlertCircle 
 } from 'lucide-react';
 
-import { analyzeMCode } from './analyzer';
+/**
+ * LÓGICA DEL ANALIZADOR
+ * Integrada para evitar errores de compilación con Vite
+ */
+const analyzeMCode = (code) => {
+  if (!code || code.trim() === "") {
+    return { success: false, error: "El código está vacío." };
+  }
+
+  try {
+    const lines = code.split('\n');
+    const lowerCode = code.toLowerCase();
+    
+    // Validación de bloques let/in
+    const hasLet = lowerCode.includes("let");
+    const hasIn = lowerCode.includes("in");
+
+    if (hasLet && !hasIn) {
+      return { success: false, error: "Estructura incompleta: Se encontró 'let' pero falta el bloque 'in'." };
+    }
+
+    // Extracción de pasos mediante Regex
+    const steps = [];
+    const stepRegex = /^\s*(?:#"(.*)"|([a-zA-Z0-9._]+))\s*=/;
+
+    lines.forEach(line => {
+      const match = line.match(stepRegex);
+      if (match) {
+        const stepName = match[1] || match[2];
+        if (stepName && !['let', 'in'].includes(stepName.trim().toLowerCase())) {
+          steps.push(stepName.trim());
+        }
+      }
+    });
+
+    return {
+      success: true,
+      message: "Análisis completado.",
+      steps: steps.length > 0 ? steps : ["Paso único"],
+      stats: { lineCount: lines.length, stepCount: steps.length }
+    };
+  } catch (err) {
+    return { success: false, error: "Error en el análisis: " + err.message };
+  }
+};
 
 export default function App() {
   const [status, setStatus] = useState('idle'); // idle, analyzed, error
@@ -219,7 +263,7 @@ export default function App() {
           {status === 'analyzed' && <div className="flex items-center gap-2 text-green-700"><CheckCircle2 size={14} /> <span>VÁLIDO // {steps.length} PASOS</span></div>}
           {status === 'error' && <div className="flex items-center gap-2"><AlertCircle size={14} /> <span>ERROR: {errorMessage}</span></div>}
         </div>
-        <span className="text-[9px] font-black tracking-tighter bg-white/50 px-3 py-1 rounded border border-black/5 shadow-inner uppercase tracking-widest">M-Formatter V1.2.2</span>
+        <span className="text-[9px] font-black tracking-tighter bg-white/50 px-3 py-1 rounded border border-black/5 shadow-inner uppercase tracking-widest">M-Formatter V1.2.3</span>
       </div>
     </div>
   );
