@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 
 /**
- * LÓGICA DEL ANALIZADOR
- * Integrada para evitar errores de compilación con Vite
+ * LÓGICA DEL ANALIZADOR AVANZADO
+ * Integrada con validaciones estrictas de sintaxis M
  */
 const analyzeMCode = (code) => {
   if (!code || code.trim() === "") {
@@ -14,36 +14,94 @@ const analyzeMCode = (code) => {
   }
 
   try {
-    const lines = code.split('\n');
     const lowerCode = code.toLowerCase();
     
-    // Validación de bloques let/in
-    const hasLet = lowerCode.includes("let");
-    const hasIn = lowerCode.includes("in");
+    // 1. Validación de 'let' e 'in' como palabras completas
+    const hasLet = /\blet\b/.test(lowerCode);
+    const hasIn = /\bin\b/.test(lowerCode);
 
     if (hasLet && !hasIn) {
-      return { success: false, error: "Estructura incompleta: Se encontró 'let' pero falta el bloque 'in'." };
+      return { success: false, error: "Error de sintaxis: Se abrió un bloque 'let' pero falta el 'in'." };
+    }
+    if (hasIn && !hasLet) {
+      return { success: false, error: "Error de sintaxis: Se encontró 'in' pero falta el 'let' inicial." };
     }
 
-    // Extracción de pasos mediante Regex
-    const steps = [];
-    const stepRegex = /^\s*(?:#"(.*)"|([a-zA-Z0-9._]+))\s*=/;
+    // 2. Validación estricta de paréntesis, corchetes, llaves y comillas
+    let parens = 0, brackets = 0, braces = 0;
+    let inString = false;
 
-    lines.forEach(line => {
-      const match = line.match(stepRegex);
-      if (match) {
+    for (let i = 0; i < code.length; i++) {
+      const char = code[i];
+
+      if (char === '"') {
+         // Manejo de comillas escapadas en M ("")
+         if (inString && code[i+1] === '"') {
+             i++; 
+             continue;
+         }
+         inString = !inString;
+      }
+
+      if (!inString) {
+        if (char === '(') parens++;
+        if (char === ')') parens--;
+        if (char === '[') brackets++;
+        if (char === ']') brackets--;
+        if (char === '{') braces++;
+        if (char === '}') braces--;
+
+        if (parens < 0) return { success: false, error: "Error de sintaxis: Se cerró un paréntesis ')' que no fue abierto." };
+        if (brackets < 0) return { success: false, error: "Error de sintaxis: Se cerró un corchete ']' que no fue abierto." };
+        if (braces < 0) return { success: false, error: "Error de sintaxis: Se cerró una llave '}' que no fue abierta." };
+      }
+    }
+
+    if (inString) return { success: false, error: "Error de sintaxis: Falta cerrar comillas en una cadena de texto." };
+    if (parens > 0) return { success: false, error: `Error de sintaxis: Faltan cerrar ${parens} paréntesis '('.` };
+    if (brackets > 0) return { success: false, error: `Error de sintaxis: Faltan cerrar ${brackets} corchetes '['.` };
+    if (braces > 0) return { success: false, error: `Error de sintaxis: Faltan cerrar ${braces} llaves '{'.` };
+
+    // 3. Extracción de pasos y validación de comas faltantes
+    const steps = [];
+    // Regex para detectar asignaciones de pasos: Paso = o #"Paso" =
+    const stepRegex = /^\s*(?:#"(.*)"|([a-zA-Z0-9._]+))\s*=/gm;
+    let match;
+    const declarations = [];
+    
+    while ((match = stepRegex.exec(code)) !== null) {
         const stepName = match[1] || match[2];
         if (stepName && !['let', 'in'].includes(stepName.trim().toLowerCase())) {
-          steps.push(stepName.trim());
+            steps.push(stepName.trim());
+            declarations.push({ name: stepName.trim(), index: match.index });
         }
-      }
-    });
+    }
+
+    if (declarations.length > 1) {
+        // Quitamos comentarios para no confundir al validador de comas
+        const codeWithoutComments = code.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, ''); 
+        
+        for (let i = 1; i < declarations.length; i++) {
+            const currentMatchIndex = declarations[i].index;
+            const textBefore = codeWithoutComments.substring(0, currentMatchIndex).trim();
+            
+            // Si el texto antes de la declaración de un nuevo paso no termina en coma
+            if (!textBefore.endsWith(',')) {
+                if (!textBefore.toLowerCase().endsWith('let')) {
+                    return { 
+                        success: false, 
+                        error: `Error de sintaxis: Falta una coma ',' antes del paso '${declarations[i].name}'.` 
+                    };
+                }
+            }
+        }
+    }
 
     return {
       success: true,
       message: "Análisis completado.",
       steps: steps.length > 0 ? steps : ["Paso único"],
-      stats: { lineCount: lines.length, stepCount: steps.length }
+      stats: { lineCount: code.split('\n').length, stepCount: steps.length }
     };
   } catch (err) {
     return { success: false, error: "Error en el análisis: " + err.message };
@@ -263,7 +321,7 @@ export default function App() {
           {status === 'analyzed' && <div className="flex items-center gap-2 text-green-700"><CheckCircle2 size={14} /> <span>VÁLIDO // {steps.length} PASOS</span></div>}
           {status === 'error' && <div className="flex items-center gap-2"><AlertCircle size={14} /> <span>ERROR: {errorMessage}</span></div>}
         </div>
-        <span className="text-[9px] font-black tracking-tighter bg-white/50 px-3 py-1 rounded border border-black/5 shadow-inner uppercase tracking-widest">M-Formatter V1.2.3</span>
+        <span className="text-[9px] font-black tracking-tighter bg-white/50 px-3 py-1 rounded border border-black/5 shadow-inner uppercase tracking-widest">M-Formatter V1.2.4</span>
       </div>
     </div>
   );
