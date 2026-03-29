@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/m-formatter/', // <-- ESTO ES LO MÁS IMPORTANTE
+  base: '/M-formatter/', // <-- ESTO ES LO MÁS IMPORTANTE
 })
