@@ -2,7 +2,7 @@
   "name": "m-formatter",
   "private": true,
   "version": "0.0.0",
-  "homepage": "https://RaulR8128.github.io/m-formatter", 
+  "homepage": "https://RaulR8128.github.io/m-formatter",
   "type": "module",
   "scripts": {
     "dev": "vite",
