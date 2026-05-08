@@ -97,41 +97,33 @@ export default function App() {
   };
 
   /**
-   * MOTOR DE FORMATEO PROFESIONAL V1.6.1
-   * Corrección: Mantenimiento de identificadores escapados (#" ") en estilo original.
+   * MOTOR DE FORMATEO PROFESIONAL V1.6.2
+   * - Callback Regex Inteligente para ignorar strings (textos entre comillas simples).
+   * - Opción SNAKE ahora reemplaza solo espacios conservando las mayúsculas originales.
    */
   const handleApply = () => {
     if (status !== 'analyzed') return;
     
     const indentStr = config.indentation === 'tab' ? '\t' : ' '.repeat(parseInt(config.indentation));
 
-    /**
-     * Transforma el nombre según el estilo, pero asegura que si el nombre
-     * resultante requiere escape en Power Query, lo incluya.
-     */
     const transformName = (name, style) => {
       let baseName = name;
       
       if (style !== 'original') {
-        const clean = name.replace(/#"|"/g, '');
-        const words = clean.split(/[^a-zA-Z0-9]+/).filter(Boolean);
         if (style === 'camel') {
+          // Camel case elimina símbolos y pone la primera en minúscula
+          const words = name.split(/[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ]+/).filter(Boolean);
           baseName = words.map((w, i) => i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
         } else if (style === 'snake') {
-          baseName = words.map(w => w.toLowerCase()).join('_');
+          // Snake Case adaptado a Power Query: Solo reemplaza espacios por _
+          baseName = name.replace(/\s+/g, '_');
         }
       }
 
-      // Validación de identificador simple en Power Query:
-      // Debe empezar por letra o _ y contener solo letras, números, puntos o guiones bajos.
-      // Si tiene espacios, caracteres especiales (ñ, á) o empieza por número, requiere #" "
       const isSimpleIdentifier = /^[a-zA-Z_][a-zA-Z0-9._]*$/.test(baseName);
       return isSimpleIdentifier ? baseName : `#"${baseName}"`;
     };
 
-    /**
-     * Determina si un bloque debe expandirse (multilínea).
-     */
     const shouldExpandBlock = (text, startIndex, opener, closer) => {
       let depth = 0;
       let inString = false;
@@ -217,18 +209,35 @@ export default function App() {
       let body = inputCode.substring(letIndex + 3, inIndex);
       let resultStep = inputCode.substring(inIndex + 2).trim();
 
-      // Mapeo de integridad referencial
-      const nameMapping = steps.map(s => ({
-        originalEscaped: s.includes(" ") || !/^[a-zA-Z_][a-zA-Z0-9._]*$/.test(s) ? `#"${s}"` : s,
-        nuevo: transformName(s, config.naming)
-      }));
-
-      const sortedMapping = [...nameMapping].sort((a, b) => b.originalEscaped.length - a.originalEscaped.length);
-      sortedMapping.forEach(map => {
-        const regex = new RegExp(map.originalEscaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-        body = body.replace(regex, map.nuevo);
-        resultStep = resultStep.replace(regex, map.nuevo);
+      // DICCIONARIO DE REEMPLAZO
+      const renameDict = {};
+      steps.forEach(s => {
+        const nuevo = transformName(s, config.naming);
+        renameDict[s] = nuevo;              // Para el caso de un identificador simple
+        renameDict[`#"${s}"`] = nuevo;      // Para el caso de un identificador escapado
       });
+
+      // TOKENIZACIÓN CON REGEX CALLBACK (El Enfoque Inteligente)
+      // Grupo 1: Identificador escapado #"..."
+      // Grupo 2: String literal "..."
+      // Grupo 3: Identificador simple Palabra
+      const tokenRegex = /(#"(?:[^"]|"")*")|("(?:[^"]|"")*")|([a-zA-Z_][a-zA-Z0-9._]*)/g;
+
+      const replaceCallback = (match, escapedId, literalStr, simpleId) => {
+        // 1. Si es un texto literal puro ("Filtro report"), se ignora y se devuelve intacto.
+        if (literalStr) return literalStr;
+        
+        // 2. Si es una variable, buscamos si está en nuestro diccionario y la cambiamos.
+        if (escapedId && renameDict[escapedId]) return renameDict[escapedId];
+        if (simpleId && renameDict[simpleId]) return renameDict[simpleId];
+        
+        // 3. Si no coincide con ninguna variable nuestra (ej. Table.SelectColumns), se queda igual.
+        return match;
+      };
+
+      // Aplicamos el reemplazo inteligente en un solo barrido
+      body = body.replace(tokenRegex, replaceCallback);
+      resultStep = resultStep.replace(tokenRegex, replaceCallback);
 
       const stepRegex = /^\s*(?:#"(.*?)"|([a-zA-Z0-9._]+))\s*=/gm;
       let match;
@@ -263,7 +272,7 @@ export default function App() {
         finalResult
       ].join('\n');
 
-      setOutputCode(`// M-Formatter Professional v1.6.1\n// Estilo: ${config.naming.toUpperCase()}\n\n` + output);
+      setOutputCode(`// M-Formatter Professional v1.6.2\n// Estilo: ${config.naming.toUpperCase()}\n\n` + output);
 
     } catch (err) {
       setOutputCode(`// Error técnico: ${err.message}`);
@@ -442,7 +451,7 @@ export default function App() {
           {status === 'analyzed' && <div className="flex items-center gap-2"><CheckCircle2 size={14} /> <span>CÓDIGO VÁLIDO // {steps.length} PASOS</span></div>}
           {status === 'error' && <div className="flex items-center gap-2"><AlertCircle size={14} /> <span>{errorMessage}</span></div>}
         </div>
-        <span className="text-[9px] font-black opacity-60 uppercase tracking-tighter italic">M-Formatter Professional V1.6.1</span>
+        <span className="text-[9px] font-black opacity-60 uppercase tracking-tighter italic">M-Formatter Professional V1.6.2</span>
       </div>
     </div>
   );
